@@ -5,7 +5,7 @@
     ENV NODE_ENV=development \
         PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
     
-    # toolchain mínima + yarn 1.x
+    # Toolchain mínima + Yarn 1.x
     RUN apt-get update && apt-get install -y --no-install-recommends \
           python3 make g++ ca-certificates git \
       && npm i -g yarn@1.22.22 \
@@ -36,7 +36,7 @@
         # No Debian, o binário instalado pelo pacote 'chromium' é /usr/bin/chromium
         PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
     
-    # Chromium e fontes (DejaVu correto no Debian)
+    # Chromium e fontes (pacotes certos para Debian Bookworm)
     RUN apt-get update && apt-get install -y --no-install-recommends \
           chromium fonts-liberation fonts-dejavu-core \
       && rm -rf /var/lib/apt/lists/*
@@ -51,6 +51,4 @@
     # SECRET_KEY, PUBLIC_URL=https://SEU-APP.up.railway.app, PORT=21465,
     # USER_DATA_DIR=/data/userDataDir, TOKEN_STORE=file
     EXPOSE 21465
-    CMD ["node", "dist/server.js"]    
-    
-    
+    CMD ["node", "dist/server.js"]
