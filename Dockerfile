@@ -1,33 +1,59 @@
-# ---- deps (dev) ----
-    FROM node:20-alpine AS deps
+# ---- deps (instala dev deps p/ build do TS) ----
+    FROM node:22-bookworm-slim AS deps
     WORKDIR /app
-    ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-    # dependências nativas para build do sharp
-    RUN apk add --no-cache libc6-compat python3 make g++ vips-dev fftw-dev
-    COPY package.json yarn.lock* package-lock.json* ./
-    # Instala TODAS as deps (inclui typescript, tsc) para build
-    RUN if [ -f yarn.lock ]; then yarn install --frozen-lockfile; else npm ci; fi
     
-    # ---- build ----
-    FROM node:20-alpine AS build
+    # Evita baixar Chromium do puppeteer (vamos usar o do sistema)
+    ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+        NODE_ENV=development
+    
+    # Dependências nativas mínimas para eventuais builds
+    RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 make g++ ca-certificates git \
+     && rm -rf /var/lib/apt/lists/*
+    
+    COPY package.json ./
+    # Use o lock que você tiver. Dê preferência a um só (npm OU yarn). Exemplos:
+    # COPY package-lock.json ./
+    # RUN npm ci
+    # --ou--
+    # COPY yarn.lock ./
+    # RUN corepack enable && yarn install --frozen-lockfile
+    
+    # Se você usa npm:
+    COPY package-lock.json ./
+    RUN npm ci
+    
+    # ---- build (compila TS -> dist) ----
+    FROM node:22-bookworm-slim AS build
     WORKDIR /app
     ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
     COPY --from=deps /app/node_modules ./node_modules
     COPY . .
-    # compila TS -> dist
-    RUN if [ -f yarn.lock ]; then yarn build; else npm run build; fi
+    # Se usa npm:
+    RUN npm run build
+    # Se usa yarn: RUN corepack enable && yarn build
     
-    # ---- runtime ----
-    FROM node:20-alpine AS runner
+    # ---- runtime (produção) ----
+    FROM node:22-bookworm-slim AS runner
     WORKDIR /app
+    
     ENV NODE_ENV=production \
         PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-        PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
-    # Chromium e dependências do puppeteer + vips p/ sharp em runtime
-    RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates ttf-freefont vips
+        PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    
+    # Chromium e fontes para o Whats/renderer
+    RUN apt-get update && apt-get install -y --no-install-recommends \
+        chromium fonts-liberation ttf-dejavu \
+     && rm -rf /var/lib/apt/lists/*
+    
+    # Copia app pronto
     COPY --from=build /app ./
-    # (Opcional) crie diretórios persistentes; no Railway mapearemos volume
-    RUN mkdir -p /app/userDataDir /app/wppconnect_tokens
+    
+    # Pastas persistentes (mapeie volume no Railway)
+    RUN mkdir -p /data/userDataDir /data/wppconnect_tokens
+    
+    # Variáveis recomendadas em runtime:
+    # SECRET_KEY, PUBLIC_URL, PORT=21465, USER_DATA_DIR=/data/userDataDir, TOKEN_STORE=file
     EXPOSE 21465
-    # Usa PORT do Railway se fornecida
-    CMD ["node","dist/server.js"]    
+    CMD ["node", "dist/server.js"]
+    
